@@ -186,8 +186,8 @@ def load_data(filename):
                 instance_properties = dict()
                 for exercise_parameter in list_of_exercise_parameters:
                     [key, value] = exercise_parameter.split(':')
-                    # if key == 'user':
-                    #     user_exercise = value
+                    if key == 'user':
+                        user_exercise = value
                     if key == 'countries':
                         value = value.split('|')
                     elif key == 'days':
@@ -203,8 +203,8 @@ def load_data(filename):
             # Otherwise we're parsing a new Instance for the current exercise
             else:
                 line = line.split()
-                # if user_exercise.strip() != user.strip():
-                #     continue
+                if user_exercise.strip() != user.strip():
+                    continue
                 if training:
                     assert len(line) == 7
                 else:
