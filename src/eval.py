@@ -1,5 +1,8 @@
 from __future__ import division
-
+from __future__ import print_function
+from __future__ import absolute_import
+from builtins import zip
+from builtins import range
 import argparse
 from io import open
 import math
@@ -8,8 +11,8 @@ import os
 from future.builtins import range
 from future.utils import iterkeys, iteritems
 
-from utils import load_labels
-from config import Config
+from .utils import load_labels
+from .config import Config
 
 def main():
     """
@@ -90,7 +93,7 @@ def compute_auroc(actual, predicted):
     sorted_predicted = [row[0] for row in temp]
     sorted_actual = [row[1] for row in temp]
 
-    sorted_posterior = sorted(zip(sorted_predicted, range(len(sorted_predicted))))
+    sorted_posterior = sorted(zip(sorted_predicted, list(range(len(sorted_predicted)))))
     r = [0 for k in sorted_predicted]
     cur_val = sorted_posterior[0][0]
     last_rank = 0

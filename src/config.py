@@ -1,11 +1,13 @@
 """This is the configuration file which loads the model's parameters from the file. 
 """
 #!/usr/bin/env python
+from __future__ import absolute_import
+from builtins import object
 import argparse
 from configparser import ConfigParser
-from utils import convert_to_bool
+from .utils import convert_to_bool
 
-class Config:
+class Config(object):
     """The configuration class
     """
 

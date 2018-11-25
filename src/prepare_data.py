@@ -2,12 +2,14 @@
 This program is used to generate a csv that captures instance level feature values for the next and previous token
 in a given exercise.We also capture the POS of the tokens. 
 """
-
+from __future__ import print_function
+from __future__ import absolute_import
+from builtins import str
 import argparse
 import json
 import csv
 import os
-from config import Config
+from .config import Config
 
 
 def main():

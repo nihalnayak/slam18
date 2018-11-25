@@ -4,7 +4,14 @@ Duolingo SLAM Shared Task - Baseline Model
 This code is written to be compatible with both Python 2 or 3, at the expense of dependency on the future library. This
 code does not depend on any other Python libraries besides future.
 """
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
 
+from builtins import str
+from builtins import range
+from past.utils import old_div
+from builtins import object
 import argparse
 from collections import defaultdict, namedtuple
 from io import open
@@ -17,8 +24,8 @@ from future.utils import iteritems
 from metaphone import doublemetaphone
 from prettytable import PrettyTable
 
-from config import Config
-from utils import load_context_json, load_labels
+from .config import Config
+from .utils import load_context_json, load_labels
 
 # Sigma is the L2 prior variance, regularizing the baseline model. Smaller sigma means more regularization.
 _DEFAULT_SIGMA = 20.0
@@ -90,10 +97,6 @@ def main():
     logistic_regression_model = LogisticRegression()
     logistic_regression_model.train(training_instances)
     predictions = logistic_regression_model.predict_test_set(test_instances)
-
-    ####################################################################################
-    # This ends the baseline model code; now we just write predictions.                #
-    ####################################################################################
 
     # check if the directory exists
     directory = os.path.dirname(config.output_predictions)
@@ -198,7 +201,7 @@ def load_data(filename, context_json, user="+H9QWAV4"):
                     instance_properties['context_data'] = context_json[exercise_id][session_id]
                     data.append(InstanceData(instance_properties=instance_properties))
                 except:
-                    print("Not able to get data", exercise_id, session_id)
+                    print(("Not able to get data", exercise_id, session_id))
 
 
         print('Done loading ' + str(len(data)) + ' instances across ' + str(num_exercises) +
@@ -358,10 +361,10 @@ class LogisticRegression(object):
             self.reset()
         err = self.error(instance)
         for k in instance.features:
-            rate = self.eta / math.sqrt(1 + self.fcounts[k])
+            rate = old_div(self.eta, math.sqrt(1 + self.fcounts[k]))
             # L2 regularization update
             if k != 'bias':
-                self.weights[k] -= rate * self.weights[k] / self.sigma ** 2
+                self.weights[k] -= old_div(rate * self.weights[k], self.sigma ** 2)
             # error update
             self.weights[k] += rate * err * instance.features[k]
             # increment feature count for learning rate
