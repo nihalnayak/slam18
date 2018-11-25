@@ -1,17 +1,6 @@
 """
 Duolingo SLAM Shared Task - Baseline Model
 
-This baseline model loads the training and test data that you pass in via --train and --test arguments for a particular
-track (course), storing the resulting data in InstanceData objects, one for each instance. The code then creates the
-features we'll use for logistic regression, storing the resulting LogisticRegressionInstance objects, then uses those to
-train a regularized logistic model with SGD, and then makes predictions for the test set and dumps them to a CSV file
-specified with the --pred argument, in a format appropriate to be read in and graded by the eval.py script.
-
-We elect to use two different classes, InstanceData and LogisticRegressionInstance, to delineate the boundary between
-the two purposes of this code; the first being to act as a user-friendly interface to the data, and the second being to
-train and run a baseline model as an example. Competitors may feel free to use InstanceData in their own code, but
-should consider replacing the LogisticRegressionInstance with a class more appropriate for the model they construct.
-
 This code is written to be compatible with both Python 2 or 3, at the expense of dependency on the future library. This
 code does not depend on any other Python libraries besides future.
 """
@@ -25,6 +14,10 @@ from random import shuffle, uniform
 
 from future.builtins import range
 from future.utils import iteritems
+from metaphone import doublemetaphone
+
+from config import Config
+from utils import load_context_json, load_labels
 
 # Sigma is the L2 prior variance, regularizing the baseline model. Smaller sigma means more regularization.
 _DEFAULT_SIGMA = 20.0
@@ -35,48 +28,48 @@ _DEFAULT_ETA = 0.1
 
 def main():
     """
-    Executes the baseline model. This loads the training data, training labels, and dev data, then trains a logistic
-    regression model, then dumps predictions to the specified file.
-
-    Modify the middle of this code, between the two commented blocks, to create your own model.
+    This loads the training, dev(optional) and test data and returns the predictions
     """
 
-    parser = argparse.ArgumentParser(description='Duolingo shared task baseline model')
-    parser.add_argument('--train', help='Training file name', required=True)
-    parser.add_argument('--test', help='Test file name, to make predictions on', required=True)
-    parser.add_argument('--pred', help='Output file name for predictions, defaults to test_name.pred')
+    parser = argparse.ArgumentParser(description='Context based approach for second language acquisition')
+    parser.add_argument('--params_file', required=True, help='The parameters file with all the options')
     args = parser.parse_args()
 
-    if not args.pred:
-        args.pred = args.test + 'paper.baseline.pred'
+    config = Config(args.params_file)
 
-    assert os.path.isfile(args.train)
-    assert os.path.isfile(args.test)
+    # load the context json - you will 
+    context_train = load_context_json(config.train_file)
+    context_dev = load_context_json(config.dev_file)
+    context_test = load_context_json(config.test_file)
 
-    # Assert that the train course matches the test course
-    assert os.path.basename(args.train)[:5] == os.path.basename(args.test)[:5]
+    training_data, training_labels = load_data(config.train_file, context_train)
+    dev_data = load_data(config.dev_file, context_dev)
+    dev_labels = load_labels(config.dev_key)
+    test_data = load_data(config.test_file, context_test)
 
-    training_data, training_labels = load_data(args.train)
-    test_data = load_data(args.test)
-
-    ####################################################################################
-    # Here is the delineation between loading the data and running the baseline model. #
-    # Replace the code between this and the next comment block with your own.          #
-    ####################################################################################
-
+    # loading the train sets
     training_instances = [LogisticRegressionInstance(features=instance_data.to_features(),
                                                      label=training_labels[instance_data.instance_id],
                                                      name=instance_data.instance_id
                                                      ) for instance_data in training_data]
+    if config.use_dev:
+        print("Using the development data for training")
+        dev_instances = [LogisticRegressionInstance(features=instance_data.to_features(),
+                                                    label=dev_labels[instance_data.instance_id],
+                                                    name=instance_data.instance_id
+                                                    ) for instance_data in dev_data]
+        
+        training_instances += dev_instances
 
+    # Loading the test set
     test_instances = [LogisticRegressionInstance(features=instance_data.to_features(),
                                                  label=None,
                                                  name=instance_data.instance_id
                                                  ) for instance_data in test_data]
 
     logistic_regression_model = LogisticRegression()
-    logistic_regression_model.train(training_instances, iterations=10)
-
+    logistic_regression_model.train(training_instances)
+    exit()
     predictions = logistic_regression_model.predict_test_set(test_instances)
 
     ####################################################################################
@@ -88,7 +81,7 @@ def main():
             f.write(instance_id + ' ' + str(prediction) + '\n')
 
 
-def load_data(filename):
+def load_data(filename, context_json, user="+H9QWAV4"):
     """
     This method loads and returns the data in filename. If the data is labelled training data, it returns labels too.
 
@@ -130,6 +123,8 @@ def load_data(filename):
                 instance_properties = dict()
                 for exercise_parameter in list_of_exercise_parameters:
                     [key, value] = exercise_parameter.split(':')
+                    if key == 'user':
+                        user_exercise = value
                     if key == 'countries':
                         value = value.split('|')
                     elif key == 'days':
@@ -145,6 +140,8 @@ def load_data(filename):
             # Otherwise we're parsing a new Instance for the current exercise
             else:
                 line = line.split()
+                if user_exercise.strip() != user.strip():
+                    continue
                 if training:
                     assert len(line) == 7
                 else:
@@ -168,7 +165,21 @@ def load_data(filename):
                 if training:
                     label = float(line[6])
                     labels[instance_properties['instance_id']] = label
-                data.append(InstanceData(instance_properties=instance_properties))
+                
+                # get the instance for the context data from the context json
+                exercise_id = instance_properties['instance_id'][:8]
+
+                # get session id
+                session_id = instance_properties['instance_id'][8:10]
+                
+                # context data from the json
+                # TODO: include only the token index and the first token index
+                try:
+                    instance_properties['context_data'] = context_json[exercise_id][session_id]
+                    data.append(InstanceData(instance_properties=instance_properties))
+                except:
+                    print(exercise_id, session_id)
+
 
         print('Done loading ' + str(len(data)) + ' instances across ' + str(num_exercises) +
               ' exercises.\n')
@@ -213,6 +224,9 @@ class InstanceData(object):
         # Derived parameters shared across the whole session
         self.session_id = self.instance_id[:8]
 
+        # custom context data
+        self.context_data = instance_properties['context_data']
+
     def to_features(self):
         """
         Prepares those features that we wish to use in the LogisticRegression example in this file. We introduce a bias,
@@ -237,6 +251,43 @@ class InstanceData(object):
 
         to_return['session:' + self.session] = 1.0
 
+        first_token = self.context_data['01']
+
+        to_return['first-token:' + first_token['token']] = 1.0
+
+
+        token_id = self.instance_id[10:12]
+        token_data = self.context_data[token_id]
+
+        if "previous_token" in token_data:
+            # if self.format == 'reverse_translate' or self.format == 'reverse_tap':
+
+            _token = token_data['previous_token'] + self.token
+            to_return['metaphone:' + doublemetaphone(_token)[0]] = 1.0
+
+            to_return['previous_token:' + token_data['previous_token'].lower()
+                      + ":current_token:" + self.token.lower()] = 1.0
+
+            to_return['previous_pos:' + token_data['previous_part_of_speech']
+                      + ":current_pos:" + self.part_of_speech] = 1.0
+
+            # else:
+            #     _token = token_data['previous_token'] + self.token
+            #     to_return['metaphone:' + doublemetaphone(_token)[0]] = 1.0
+                # _token = doublemetaphone(token_data['previous_token'])[0][-1] + doublemetaphone(self.token)[0][0]
+                # to_return['metaphone:' + _token] = 1.0
+
+        if "next_token" in token_data:
+            _token = self.token + token_data['next_token']
+            # to_return['next-metaphone:' + doublemetaphone(_token)[0]] = 1.0
+            if self.format == 'reverse_translate' or self.format == 'reverse_tap':
+                to_return['next-metaphone:' + doublemetaphone(_token)[0]] = 1.0
+                to_return['next_token:' + token_data['next_token'].lower()
+                      + ":current_token:" + self.token.lower()] = 1.0
+                # to_return['next_part_of_speech:' + token_data['next_part_of_speech']] = 1.0
+                to_return['next_part_of_speech:' + token_data['next_part_of_speech']
+                          + ":current_pos:" + self.part_of_speech] = 1.0
+
         return to_return
 
 
@@ -259,10 +310,11 @@ class LogisticRegression(object):
     An L2-regularized logistic regression object trained using stochastic gradient descent.
     """
 
-    def __init__(self, sigma=_DEFAULT_SIGMA, eta=_DEFAULT_ETA):
+    def __init__(self, sigma=_DEFAULT_SIGMA, eta=_DEFAULT_ETA, epochs=10):
         super(LogisticRegression, self).__init__()
         self.sigma = sigma  # L2 prior variance
         self.eta = eta  # initial learning rate
+        self.epochs = epochs
         self.weights = defaultdict(lambda: uniform(-1.0, 1.0)) # weights initialize to random numbers
         self.fcounts = None # this forces smaller steps for things we've seen often before
 
@@ -295,7 +347,7 @@ class LogisticRegression(object):
             self.fcounts[k] += 1
 
     def train(self, train_set, iterations=10):
-        for it in range(iterations):
+        for it in range(self.epochs):
             print('Training iteration ' + str(it+1) + '/' + str(iterations) + '...')
             shuffle(train_set)
             for instance in train_set:
