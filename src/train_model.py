@@ -15,6 +15,7 @@ from random import shuffle, uniform
 from future.builtins import range
 from future.utils import iteritems
 from metaphone import doublemetaphone
+from prettytable import PrettyTable
 
 from config import Config
 from utils import load_context_json, load_labels
@@ -48,13 +49,12 @@ def main():
     test_data = load_data(config.test_file, context_test)
 
     # loading the train sets
-    training_instances = [LogisticRegressionInstance(features=instance_data.to_features(),
+    training_instances = [LogisticRegressionInstance(features=instance_data.to_features(config),
                                                      label=training_labels[instance_data.instance_id],
                                                      name=instance_data.instance_id
                                                      ) for instance_data in training_data]
     if config.use_dev:
-        print("Using the development data for training")
-        dev_instances = [LogisticRegressionInstance(features=instance_data.to_features(),
+        dev_instances = [LogisticRegressionInstance(features=instance_data.to_features(config),
                                                     label=dev_labels[instance_data.instance_id],
                                                     name=instance_data.instance_id
                                                     ) for instance_data in dev_data]
@@ -62,21 +62,45 @@ def main():
         training_instances += dev_instances
 
     # Loading the test set
-    test_instances = [LogisticRegressionInstance(features=instance_data.to_features(),
+    test_instances = [LogisticRegressionInstance(features=instance_data.to_features(config),
                                                  label=None,
                                                  name=instance_data.instance_id
                                                  ) for instance_data in test_data]
 
+    # TODO: log all the details
+    print("\n")
+    print("Training Details: Context Features")
+
+    # Using pretty table
+    pt = PrettyTable()
+    pt.field_names = ['Training Feature', 'True/False']
+    pt.add_row(["Previous-Current Token POS (PCPOS)", config.use_prev_current_pos])
+    pt.add_row(["Previous-Current Token Token (PCT)", config.use_prev_current_token])
+    pt.add_row(["Previous-Current Token Metaphone (PCM)", config.use_prev_current_metaphone])
+
+    pt.add_row(["Current-Next Token POS (CNPOS)", config.use_current_next_pos])
+    pt.add_row(["Current-Next Token Token (CNT)", config.use_current_next_token])
+    pt.add_row(["Current-Next Token Metaphone (CNM)", config.use_current_next_metaphone])
+
+    pt.add_row(['First Token (FT)', config.use_first_token])
+
+    print(pt)
+    print("\n")
+
     logistic_regression_model = LogisticRegression()
     logistic_regression_model.train(training_instances)
-    exit()
     predictions = logistic_regression_model.predict_test_set(test_instances)
 
     ####################################################################################
     # This ends the baseline model code; now we just write predictions.                #
     ####################################################################################
 
-    with open(args.pred, 'wt') as f:
+    # check if the directory exists
+    directory = os.path.dirname(config.output_predictions)
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+    with open(config.output_predictions, 'wt') as f:
         for instance_id, prediction in iteritems(predictions):
             f.write(instance_id + ' ' + str(prediction) + '\n')
 
@@ -95,7 +119,6 @@ def load_data(filename, context_json, user="+H9QWAV4"):
 
     # 'data' stores a list of 'InstanceData's as values.
     data = []
-
     # If this is training data, then 'labels' is a dict that contains instance_ids as keys and labels as values.
     training = False
     if filename.find('train') != -1:
@@ -123,8 +146,6 @@ def load_data(filename, context_json, user="+H9QWAV4"):
                 instance_properties = dict()
                 for exercise_parameter in list_of_exercise_parameters:
                     [key, value] = exercise_parameter.split(':')
-                    if key == 'user':
-                        user_exercise = value
                     if key == 'countries':
                         value = value.split('|')
                     elif key == 'days':
@@ -140,8 +161,7 @@ def load_data(filename, context_json, user="+H9QWAV4"):
             # Otherwise we're parsing a new Instance for the current exercise
             else:
                 line = line.split()
-                if user_exercise.strip() != user.strip():
-                    continue
+
                 if training:
                     assert len(line) == 7
                 else:
@@ -178,7 +198,7 @@ def load_data(filename, context_json, user="+H9QWAV4"):
                     instance_properties['context_data'] = context_json[exercise_id][session_id]
                     data.append(InstanceData(instance_properties=instance_properties))
                 except:
-                    print(exercise_id, session_id)
+                    print("Not able to get data", exercise_id, session_id)
 
 
         print('Done loading ' + str(len(data)) + ' instances across ' + str(num_exercises) +
@@ -227,7 +247,7 @@ class InstanceData(object):
         # custom context data
         self.context_data = instance_properties['context_data']
 
-    def to_features(self):
+    def to_features(self, config):
         """
         Prepares those features that we wish to use in the LogisticRegression example in this file. We introduce a bias,
         and take a few included features to use. Note that this dict restructures the corresponding features of the
@@ -251,42 +271,43 @@ class InstanceData(object):
 
         to_return['session:' + self.session] = 1.0
 
-        first_token = self.context_data['01']
-
-        to_return['first-token:' + first_token['token']] = 1.0
-
-
         token_id = self.instance_id[10:12]
         token_data = self.context_data[token_id]
+
+        if config.use_first_token:
+            first_token = self.context_data['01']
+            to_return['first-token:' + first_token['token']] = 1.0
 
         if "previous_token" in token_data:
             # if self.format == 'reverse_translate' or self.format == 'reverse_tap':
 
-            _token = token_data['previous_token'] + self.token
-            to_return['metaphone:' + doublemetaphone(_token)[0]] = 1.0
+            if config.use_prev_current_metaphone:
+                _token = token_data['previous_token'] + self.token
+                to_return['metaphone:' + doublemetaphone(_token)[0]] = 1.0
 
-            to_return['previous_token:' + token_data['previous_token'].lower()
-                      + ":current_token:" + self.token.lower()] = 1.0
+            if config.use_prev_current_token:
+                to_return['previous_token:' + token_data['previous_token'].lower()
+                        + ":current_token:" + self.token.lower()] = 1.0
 
-            to_return['previous_pos:' + token_data['previous_part_of_speech']
+            if config.use_prev_current_pos:
+                to_return['previous_pos:' + token_data['previous_part_of_speech']
                       + ":current_pos:" + self.part_of_speech] = 1.0
-
-            # else:
-            #     _token = token_data['previous_token'] + self.token
-            #     to_return['metaphone:' + doublemetaphone(_token)[0]] = 1.0
-                # _token = doublemetaphone(token_data['previous_token'])[0][-1] + doublemetaphone(self.token)[0][0]
-                # to_return['metaphone:' + _token] = 1.0
-
+        
+        # this check is used because if the token is the last token in the instance,
+        # then there will be no next token
         if "next_token" in token_data:
-            _token = self.token + token_data['next_token']
-            # to_return['next-metaphone:' + doublemetaphone(_token)[0]] = 1.0
+            # in our experiments we use these features for reverse translate and reverse tap exercises
+            # there was a dip in the results for listening exercises (refer our paper for more details)
             if self.format == 'reverse_translate' or self.format == 'reverse_tap':
-                to_return['next-metaphone:' + doublemetaphone(_token)[0]] = 1.0
-                to_return['next_token:' + token_data['next_token'].lower()
-                      + ":current_token:" + self.token.lower()] = 1.0
-                # to_return['next_part_of_speech:' + token_data['next_part_of_speech']] = 1.0
-                to_return['next_part_of_speech:' + token_data['next_part_of_speech']
-                          + ":current_pos:" + self.part_of_speech] = 1.0
+                if config.use_current_next_metaphone:
+                    _token = self.token + token_data['next_token']            
+                    to_return['next-metaphone:' + doublemetaphone(_token)[0]] = 1.0
+                if config.use_current_next_token:
+                    to_return['next_token:' + token_data['next_token'].lower()
+                        + ":current_token:" + self.token.lower()] = 1.0
+                if config.use_current_next_pos:
+                    to_return['next_part_of_speech:' + token_data['next_part_of_speech']
+                            + ":current_pos:" + self.part_of_speech] = 1.0
 
         return to_return
 
