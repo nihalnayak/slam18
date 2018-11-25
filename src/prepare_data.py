@@ -63,13 +63,9 @@ def load_and_compute(file_path, user="+H9QWAV4"):
                 list_of_exercise_parameters = line[2:].split()
                 for exercise_parameter in list_of_exercise_parameters:
                     [key, value] = exercise_parameter.split(':')
-                    if key == 'user':
-                        user_exercise = value
 
             # Otherwise we're parsing a new Instance for the current exercise
             else:
-                if user_exercise.strip() != user.strip():
-                    continue
                 line = line.split()
 
                 # instance id

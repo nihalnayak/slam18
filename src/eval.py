@@ -9,6 +9,7 @@ from future.builtins import range
 from future.utils import iterkeys, iteritems
 
 from utils import load_labels
+from config import Config
 
 def main():
     """
@@ -18,19 +19,16 @@ def main():
 
     # test_metrics()
 
-    parser = argparse.ArgumentParser(description='Duolingo shared task evaluation script')
-    parser.add_argument('--pred', help='Predictions file name', required=True)
-    parser.add_argument('--key', help='Labelled keys', required=True)
-
+    parser = argparse.ArgumentParser(description='Context based Approach for Second Language Acquisition')
+    parser.add_argument('--params_file', required=True, help='The parameters file with all the options')
     args = parser.parse_args()
-
-    assert os.path.isfile(args.pred)
+    config = Config(args.params_file)
 
     print('\nLoading labels for exercises...')
-    labels = load_labels(args.key)
+    labels = load_labels(config.test_key)
 
     print('Loading predictions for exercises...')
-    predictions = load_labels(args.pred)
+    predictions = load_labels(config.output_predictions)
 
     actual = []
     predicted = []
