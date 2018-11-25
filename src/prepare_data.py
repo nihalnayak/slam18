@@ -2,24 +2,45 @@
 This program is used to generate a csv that captures instance level feature values for the next and previous token
 in a given exercise.We also capture the POS of the tokens. 
 """
+from __future__ import print_function
+from __future__ import absolute_import
+from builtins import str
 import argparse
 import json
 import csv
 import os
+from .config import Config
 
 
 def main():
     parser = argparse.ArgumentParser(description='Duolingo shared task. Compute additional features')
-    parser.add_argument('--file', required=True, help='The train or the test file')
+    parser.add_argument('--params_file', required=True, help='The parameters file with all the options')
     args = parser.parse_args()
+    config = Config(args.params_file)
 
-    load_and_compute(args.file)
+    # the train file
+    print("Preparing data for the Training Set")
+    load_and_compute(config.train_file)
+
+    # the dev file
+    print("Preparing data for the Dev Set")
+    print(config.dev_file)
+    load_and_compute(config.dev_file)
+
+
+    # the test file
+    print("Preparing data for the Test Set")
+    load_and_compute(config.test_file)
+
+    print("Process successfully completed!")
+    print("Run the following the command - ")
+    print("python train_model.py --params_file parameters.ini")
 
 
 def load_and_compute(file_path, user="+H9QWAV4"):
     data = []
 
-    # token information
+    # token informations
 
     tokens_data = {}
 
@@ -29,9 +50,9 @@ def load_and_compute(file_path, user="+H9QWAV4"):
     print('Loading instances...')
 
     with open(file_path, 'rt') as f:
+        user_exercise = ""
         for line in f:
             line = line.strip()
-
             # If there's nothing in the line, then we're done with the exercise. Print if needed, otherwise continue
             if len(line) == 0:
                 num_exercises += 1
@@ -44,14 +65,9 @@ def load_and_compute(file_path, user="+H9QWAV4"):
                 list_of_exercise_parameters = line[2:].split()
                 for exercise_parameter in list_of_exercise_parameters:
                     [key, value] = exercise_parameter.split(':')
-                    if key == 'user':
-                        user_exercise = value
 
             # Otherwise we're parsing a new Instance for the current exercise
             else:
-                if user_exercise.strip() != user.strip():
-                    pass
-
                 line = line.split()
 
                 # instance id
@@ -115,6 +131,8 @@ def load_and_compute(file_path, user="+H9QWAV4"):
         # dump the data as a json
         with open(file_path + ".json", "w") as token_json:
             json.dump(tokens_data, token_json)
+
+        f.close()
 
 if __name__ == "__main__":
     main()
